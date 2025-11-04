@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Moq;
@@ -30,17 +29,17 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Tests.UnitTests
         {
             const string queueName = "queue.name";
 
-            var channelMock = new Mock<IModel>();
+            var channelMock = new Mock<IChannel>();
             var connectionMock = new Mock<IConnection>();
-            connectionMock.Setup(x => x.CreateModel())
-                .Returns(channelMock.Object);
+            connectionMock.Setup(x => x.CreateChannelAsync(null, CancellationToken.None))
+                .ReturnsAsync(channelMock.Object);
 
             var connectionFactoryMock = new Mock<IRabbitMqConnectionFactory>();
             connectionFactoryMock.Setup(x => x.CreateRabbitMqConnection(It.IsAny<RabbitMqServiceOptions>()))
-                .Returns(connectionMock.Object);
+                .ReturnsAsync(connectionMock.Object);
 
             var consumer = new AsyncEventingBasicConsumer(channelMock.Object);
-            connectionFactoryMock.Setup(x => x.CreateConsumer(It.IsAny<IModel>()))
+            connectionFactoryMock.Setup(x => x.CreateConsumer(It.IsAny<IChannel>()))
                 .Returns(consumer);
 
             var callerMock = new Mock<IStubCaller>();
@@ -51,18 +50,18 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Tests.UnitTests
                 null,
                 connectionFactoryMock.Object,
                 callerMock.Object,
-                Enumerable.Empty<IBatchMessageHandlingMiddleware>());
+                []);
             await messageHandler.StartAsync(CancellationToken.None);
 
             for (var i = 0; i < numberOfMessages; i++)
             {
-                await consumer.HandleBasicDeliver(
+                await consumer.HandleBasicDeliverAsync(
                     "1",
                     (ulong)i,
                     false,
                     "exchange",
                     "routing,key",
-                    null,
+                    new BasicProperties(),
                     new ReadOnlyMemory<byte>());
             }
 
@@ -88,17 +87,16 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Tests.UnitTests
             const ushort prefetchCount = 10;
             var handlingPeriod = TimeSpan.FromMilliseconds(100);
 
-            var channelMock = new Mock<IModel>();
+            var channelMock = new Mock<IChannel>();
             var connectionMock = new Mock<IConnection>();
-            connectionMock.Setup(x => x.CreateModel())
-                .Returns(channelMock.Object);
-
+            connectionMock.Setup(x => x.CreateChannelAsync(null, CancellationToken.None))
+                .ReturnsAsync(channelMock.Object);
             var connectionFactoryMock = new Mock<IRabbitMqConnectionFactory>();
             connectionFactoryMock.Setup(x => x.CreateRabbitMqConnection(It.IsAny<RabbitMqServiceOptions>()))
-                .Returns(connectionMock.Object);
+                .ReturnsAsync(connectionMock.Object);
 
             var consumer = new AsyncEventingBasicConsumer(channelMock.Object);
-            connectionFactoryMock.Setup(x => x.CreateConsumer(It.IsAny<IModel>()))
+            connectionFactoryMock.Setup(x => x.CreateConsumer(It.IsAny<IChannel>()))
                 .Returns(consumer);
 
             using var waitHandle = new AutoResetEvent(false);
@@ -114,7 +112,7 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Tests.UnitTests
                 handlingPeriod,
                 connectionFactoryMock.Object,
                 caller,
-                Enumerable.Empty<IBatchMessageHandlingMiddleware>());
+                []);
             await messageHandler.StartAsync(CancellationToken.None);
 
             const int smallBatchSize = prefetchCount - 1;
@@ -125,7 +123,7 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Tests.UnitTests
                 var upperBound = (b + 1) * smallBatchSize > numberOfMessages ? numberOfMessages : (b + 1) * smallBatchSize;
                 for (var i = lowerBound; i < upperBound; i++)
                 {
-                    await consumer.HandleBasicDeliver(
+                    await consumer.HandleBasicDeliverAsync(
                         "1",
                         (ulong)i,
                         false,
@@ -150,17 +148,17 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Tests.UnitTests
             const ushort prefetchCount = 5;
             const string queueName = "queue.name";
 
-            var channelMock = new Mock<IModel>();
+            var channelMock = new Mock<IChannel>();
             var connectionMock = new Mock<IConnection>();
-            connectionMock.Setup(x => x.CreateModel())
-                .Returns(channelMock.Object);
+            connectionMock.Setup(x => x.CreateChannelAsync(null, CancellationToken.None))
+                .ReturnsAsync(channelMock.Object);
 
             var connectionFactoryMock = new Mock<IRabbitMqConnectionFactory>();
             connectionFactoryMock.Setup(x => x.CreateRabbitMqConnection(It.IsAny<RabbitMqServiceOptions>()))
-                .Returns(connectionMock.Object);
+                .ReturnsAsync(connectionMock.Object);
 
             var consumer = new AsyncEventingBasicConsumer(channelMock.Object);
-            connectionFactoryMock.Setup(x => x.CreateConsumer(It.IsAny<IModel>()))
+            connectionFactoryMock.Setup(x => x.CreateConsumer(It.IsAny<IChannel>()))
                 .Returns(consumer);
 
             var callerMock = new Mock<IStubCaller>();
@@ -188,13 +186,13 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Tests.UnitTests
 
             for (var i = 0; i < prefetchCount; i++)
             {
-                await consumer.HandleBasicDeliver(
+                await consumer.HandleBasicDeliverAsync(
                     "1",
                     (ulong)i,
                     false,
                     "exchange",
                     "routing,key",
-                    null,
+                    new BasicProperties(),
                     new ReadOnlyMemory<byte>());
             }
 

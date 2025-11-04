@@ -120,7 +120,7 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services
                 {
                     if (dictionary.ContainsKey(routingKey))
                     {
-                        if (!dictionary[routingKey].Any(x => x.GetType() == handler.GetType()))
+                        if (dictionary[routingKey].All(x => x.GetType() != handler.GetType()))
                         {
                             dictionary[routingKey].Add(handler);
                         }

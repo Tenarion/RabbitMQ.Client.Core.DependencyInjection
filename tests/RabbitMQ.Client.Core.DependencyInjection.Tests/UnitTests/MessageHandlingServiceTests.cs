@@ -64,12 +64,16 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Tests.UnitTests
                 asyncMessageHandlers);
             
             var eventArgs = new BasicDeliverEventArgs
-            {
-                Exchange = testDataModel.MessageExchange,
-                RoutingKey = testDataModel.MessageRoutingKey,
-                Body = Array.Empty<byte>()
-            };
-            var context = new MessageHandlingContext(eventArgs, _ => { }, false);
+            (
+                string.Empty,
+                0,
+                false,
+                testDataModel.MessageExchange,
+                testDataModel.MessageRoutingKey,
+                new BasicProperties(),
+                new ReadOnlyMemory<byte>()
+            );
+            var context = new MessageHandlingContext(eventArgs, (_, _) => Task.CompletedTask, false);
             await service.HandleMessageReceivingEvent(context);
 
             var messageHandlerTimes = testDataModel.MessageHandlerShouldTrigger ? Times.Once() : Times.Never();

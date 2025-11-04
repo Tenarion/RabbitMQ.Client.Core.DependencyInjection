@@ -12,7 +12,8 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Tests.UnitTests
 
         public WildcardExtensionsTests()
         {
-            _routes = new[] {
+            _routes =
+            [
                 "#",
                 "#.delete",
                 "#.create",
@@ -22,8 +23,8 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Tests.UnitTests
                 "*.update",
                 "*.create.*",
                 "*.*.*",
-                "*.*.create",
-            };
+                "*.*.create"
+            ];
         }
 
         [Fact]

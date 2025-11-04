@@ -1,10 +1,10 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>netstandard2.1</TargetFramework>
+    <TargetFramework>net9.0</TargetFramework>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <WarningsAsErrors>nullable</WarningsAsErrors>
-    <Version>5.0.0-alpha</Version>
+    <Version>570.0-alpha</Version>
     <PackageTags>RabbitMQ</PackageTags>
     <RepositoryUrl>https://github.com/AntonyVorontsov/RabbitMQ.Client.Core.DependencyInjection</RepositoryUrl>
     <RepositoryType>GIT</RepositoryType>
@@ -14,6 +14,7 @@
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <PackageIcon>icon.png</PackageIcon>
     <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
+    <AssemblyName>$(MSBuildProjectName).Updated</AssemblyName>
   </PropertyGroup>
 
   <ItemGroup>
@@ -22,10 +23,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="3.1.12" />
-    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="3.1.12" />
-    <PackageReference Include="Microsoft.Extensions.Logging" Version="3.1.12" />
-    <PackageReference Include="Newtonsoft.Json" Version="12.0.3" />
-    <PackageReference Include="RabbitMQ.Client" Version="6.2.1" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="9.0.10" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.10" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.10" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.10" />
+    <PackageReference Include="RabbitMQ.Client" Version="7.1.2" />
   </ItemGroup>
 </Project>

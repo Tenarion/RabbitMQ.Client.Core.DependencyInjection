@@ -13,7 +13,7 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Tests.UnitTests
         public void ShouldProperlyThrowExceptionWhenThereAreNoProductionExchanges()
         {
             var consumptionExchange = new RabbitMqExchange("exchange", ClientExchangeType.Consumption, new RabbitMqExchangeOptions());
-            var service = CreateService(new[] { consumptionExchange });
+            var service = CreateService([consumptionExchange]);
             Assert.Throws<ArgumentException>(() => service.ValidateArguments("another.exchange", "routing.key"));
         }
         
@@ -22,7 +22,7 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Tests.UnitTests
         {
             const string exchangeName = "exchange";
             var consumptionExchange = new RabbitMqExchange(exchangeName, ClientExchangeType.Consumption, new RabbitMqExchangeOptions());
-            var service = CreateService(new[] { consumptionExchange });
+            var service = CreateService([consumptionExchange]);
             Assert.Throws<ArgumentException>(() => service.ValidateArguments(exchangeName, "routing.key"));
         }
         
@@ -31,7 +31,7 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Tests.UnitTests
         {
             const string exchangeName = "exchange";
             var consumptionExchange = new RabbitMqExchange(exchangeName, ClientExchangeType.Production, new RabbitMqExchangeOptions());
-            var service = CreateService(new[] { consumptionExchange });
+            var service = CreateService([consumptionExchange]);
             service.ValidateArguments(exchangeName, "routing.key");
         }
         
@@ -40,7 +40,7 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Tests.UnitTests
         {
             const string exchangeName = "exchange";
             var consumptionExchange = new RabbitMqExchange(exchangeName, ClientExchangeType.Universal, new RabbitMqExchangeOptions());
-            var service = CreateService(new[] { consumptionExchange });
+            var service = CreateService([consumptionExchange]);
             service.ValidateArguments(exchangeName, "routing.key");
         }
 

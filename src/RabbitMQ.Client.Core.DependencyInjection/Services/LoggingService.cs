@@ -10,14 +10,14 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services
     public class LoggingService : ILoggingService
     {
         private readonly ILogger<LoggingService> _logger;
-        private readonly bool disableLogging;
+        private readonly bool _disableLogging;
 
         public LoggingService(
             ILogger<LoggingService> logger,
             IOptions<BehaviourConfiguration> options)
         {
             _logger = logger;
-            disableLogging = options.Value.DisableInternalLogging;
+            _disableLogging = options.Value.DisableInternalLogging;
         }
 
         /// <inheritdoc />
@@ -30,7 +30,7 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services
         /// <inheritdoc />
         public void LogWarning(string message)
         {
-            if (disableLogging)
+            if (_disableLogging)
             {
                 return;
             }
@@ -41,7 +41,7 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services
         /// <inheritdoc />
         public void LogInformation(string message)
         {
-            if (disableLogging)
+            if (_disableLogging)
             {
                 return;
             }
@@ -52,7 +52,7 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services
         /// <inheritdoc />
         public void LogDebug(string message)
         {
-            if (disableLogging)
+            if (_disableLogging)
             {
                 return;
             }

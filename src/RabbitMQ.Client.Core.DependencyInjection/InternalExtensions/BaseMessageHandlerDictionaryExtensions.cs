@@ -21,13 +21,9 @@ namespace RabbitMQ.Client.Core.DependencyInjection.InternalExtensions
         {
             foreach (var (key, value) in addition)
             {
-                if (source.ContainsKey(key))
+                if (!source.TryAdd(key, value))
                 {
                     source[key] = source[key].Union(value).ToList();
-                }
-                else
-                {
-                    source.Add(key, value);
                 }
             }
             return source;

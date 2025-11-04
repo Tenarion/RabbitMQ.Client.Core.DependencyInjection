@@ -16,15 +16,8 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Tests.Stubs
 
         public StubMessageHandlingMiddleware(int messageHandlerNumber, Dictionary<int, int> orderingMap, Dictionary<int, int> errorOrderingMap)
         {
-            if (!orderingMap.ContainsKey(messageHandlerNumber))
-            {
-                orderingMap.Add(messageHandlerNumber, 0);
-            }
-            
-            if (!errorOrderingMap.ContainsKey(messageHandlerNumber))
-            {
-                errorOrderingMap.Add(messageHandlerNumber, 0);
-            }
+            orderingMap.TryAdd(messageHandlerNumber, 0);
+            errorOrderingMap.TryAdd(messageHandlerNumber, 0);
 
             _orderingMap = orderingMap;
             _errorOrderingMap = errorOrderingMap;

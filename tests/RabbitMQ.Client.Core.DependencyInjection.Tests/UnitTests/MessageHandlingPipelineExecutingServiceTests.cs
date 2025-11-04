@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Moq;
 using RabbitMQ.Client.Core.DependencyInjection.Middlewares;
@@ -18,16 +18,16 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Tests.UnitTests
         [Fact]
         public async Task ShouldProperlyExecutePipelineWithNoAdditionalMiddlewares()
         {
-            var argsMock = new Mock<BasicDeliverEventArgs>();
+            var args = (BasicDeliverEventArgs)RuntimeHelpers.GetUninitializedObject(typeof(BasicDeliverEventArgs));
             var messageHandlingServiceMock = new Mock<IMessageHandlingService>();
             var errorProcessingServiceMock = new Mock<IErrorProcessingService>();
 
             var service = CreateService(
                 messageHandlingServiceMock.Object,
                 errorProcessingServiceMock.Object,
-                Enumerable.Empty<IMessageHandlingMiddleware>());
+                []);
 
-            var context = new MessageHandlingContext(argsMock.Object, AckAction, false);
+            var context = new MessageHandlingContext(args, AckAction, false);
             await service.Execute(context);
             messageHandlingServiceMock.Verify(x => x.HandleMessageReceivingEvent(It.IsAny<MessageHandlingContext>()), Times.Once);
         }
@@ -35,7 +35,7 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Tests.UnitTests
         [Fact]
         public async Task ShouldProperlyExecutePipeline()
         {
-            var argsMock = new Mock<BasicDeliverEventArgs>();
+            var args = (BasicDeliverEventArgs)RuntimeHelpers.GetUninitializedObject(typeof(BasicDeliverEventArgs));
             var messageHandlingServiceMock = new Mock<IMessageHandlingService>();
             var errorProcessingServiceMock = new Mock<IErrorProcessingService>();
 
@@ -54,7 +54,7 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Tests.UnitTests
                 messageHandlingServiceMock.Object,
                 errorProcessingServiceMock.Object,
                 middlewares);
-            var context = new MessageHandlingContext(argsMock.Object, AckAction, false);
+            var context = new MessageHandlingContext(args, AckAction, false);
             await service.Execute(context);
             
             messageHandlingServiceMock.Verify(x => x.HandleMessageReceivingEvent(It.IsAny<MessageHandlingContext>()), Times.Once);
@@ -66,7 +66,7 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Tests.UnitTests
         [Fact]
         public async Task ShouldProperlyExecuteFailurePipelineWhenMessageHandlingServiceThrowsException()
         {
-            var argsMock = new Mock<BasicDeliverEventArgs>();
+            var args = (BasicDeliverEventArgs)RuntimeHelpers.GetUninitializedObject(typeof(BasicDeliverEventArgs));
             var exception = new Exception();
             var messageHandlingServiceMock = new Mock<IMessageHandlingService>();
             messageHandlingServiceMock.Setup(x => x.HandleMessageReceivingEvent(It.IsAny<MessageHandlingContext>()))
@@ -88,7 +88,7 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Tests.UnitTests
                 messageHandlingServiceMock.Object,
                 errorProcessingServiceMock.Object,
                 middlewares);
-            var context = new MessageHandlingContext(argsMock.Object, AckAction, false);
+            var context = new MessageHandlingContext(args, AckAction, false);
             await service.Execute(context);
             
             errorProcessingServiceMock.Verify(x => x.HandleMessageProcessingFailure(It.IsAny<MessageHandlingContext>(), exception), Times.Once);
@@ -103,6 +103,6 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Tests.UnitTests
             IEnumerable<IMessageHandlingMiddleware> middlewares) =>
             new MessageHandlingPipelineExecutingService(messageHandlingService, errorProcessingService, middlewares);
 
-        private static void AckAction(BasicDeliverEventArgs message) { }
+        private static Task AckAction(object sender, BasicDeliverEventArgs message) { return Task.CompletedTask; }
     }
 }

@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 using RabbitMQ.Client.Core.DependencyInjection.Exceptions;
 using RabbitMQ.Client.Events;
 
@@ -6,10 +7,10 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Models
 {
     public class MessageHandlingContext
     {
-        private readonly Action<BasicDeliverEventArgs> _ackAction;
+        private readonly AsyncEventHandler<BasicDeliverEventArgs> _ackAction;
         private bool _alreadyAcknowledged;
 
-        public MessageHandlingContext(BasicDeliverEventArgs message, Action<BasicDeliverEventArgs> ackAction, bool disableAutoAck)
+        public MessageHandlingContext(BasicDeliverEventArgs message, AsyncEventHandler<BasicDeliverEventArgs> ackAction, bool disableAutoAck)
         {
             Message = message;
             _ackAction = ackAction;
@@ -20,14 +21,14 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Models
 
         public bool AutoAckEnabled { get; }
 
-        public void AcknowledgeMessage()
+        public async Task AcknowledgeMessage()
         {
             if (_alreadyAcknowledged)
             {
                 throw new MessageHasAlreadyBeenAcknowledgedException();
             }
 
-            _ackAction(Message);
+            await _ackAction(this, Message);
             _alreadyAcknowledged = true;
         }
     }

@@ -11,14 +11,14 @@ using RabbitMQ.Client.Events;
 namespace RabbitMQ.Client.Core.DependencyInjection.Services
 {
     /// <inheritdoc cref="IConsumingService"/>
-    public class ConsumingService : IConsumingService, IDisposable
+    public class ConsumingService : IConsumingService, IAsyncDisposable
     {
         /// <inheritdoc/>
         public IConnection? Connection { get; private set; }
 
         /// <inheritdoc/>
-        public IModel? Channel { get; private set; }
-        
+        public IChannel? Channel { get; private set; }
+
         /// <inheritdoc/>
         public AsyncEventingBasicConsumer? Consumer { get; private set; }
 
@@ -38,20 +38,21 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services
         }
 
         /// <inheritdoc/>
-        public void Dispose()
+        public async ValueTask DisposeAsync()
         {
             if (Channel?.IsOpen == true)
             {
-                Channel.Close((int)HttpStatusCode.OK, "Channel closed");
+                await Channel.CloseAsync((int)HttpStatusCode.OK, "Channel closed");
             }
 
             if (Connection?.IsOpen == true)
             {
-                Connection.Close();
+                await Connection.CloseAsync();
             }
 
-            Channel?.Dispose();
-            Connection?.Dispose();
+            if (Channel != null) await Channel.DisposeAsync();
+
+            if (Connection != null) await Connection.DisposeAsync();
         }
 
         /// <inheritdoc/>
@@ -61,7 +62,7 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services
         }
 
         /// <inheritdoc/>
-        public void UseChannel(IModel channel)
+        public void UseChannel(IChannel channel)
         {
             Channel = channel;
         }
@@ -73,7 +74,7 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services
         }
 
         /// <inheritdoc/>
-        public void StartConsuming()
+        public async Task StartConsuming()
         {
             Channel.EnsureIsNotNull();
             Consumer.EnsureIsNotNull();
@@ -82,20 +83,19 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services
             {
                 return;
             }
-            
-            Consumer.Received += ConsumerOnReceived;
+
+            Consumer.ReceivedAsync += ConsumerOnReceived;
             _consumingStarted = true;
 
             var consumptionExchanges = _exchanges.Where(x => x.IsConsuming);
-            _consumerTags = consumptionExchanges.SelectMany(
-                    exchange => exchange.Options.Queues.Select(
-                        queue => Channel.BasicConsume(queue: queue.Name, autoAck: false, consumer: Consumer)))
-                .Distinct()
-                .ToList();
+            var tags = await Task.WhenAll(consumptionExchanges.SelectMany(exchange =>
+                exchange.Options.Queues.Select(queue =>
+                    Channel.BasicConsumeAsync(queue: queue.Name, autoAck: false, consumer: Consumer))));
+            _consumerTags = tags.Distinct().ToList();
         }
 
         /// <inheritdoc/>
-        public void StopConsuming()
+        public async Task StopConsuming()
         {
             Channel.EnsureIsNotNull();
             Consumer.EnsureIsNotNull();
@@ -105,19 +105,21 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services
                 return;
             }
 
-            Consumer.Received -= ConsumerOnReceived;
+            Consumer.ReceivedAsync -= ConsumerOnReceived;
             _consumingStarted = false;
             foreach (var tag in _consumerTags)
             {
-                Channel.BasicCancel(tag);
+                await Channel.BasicCancelAsync(tag);
             }
         }
 
-        private void AckAction(BasicDeliverEventArgs eventArgs) => Channel.EnsureIsNotNull().BasicAck(eventArgs.DeliveryTag, false);
+        private async Task AckAction(object sender, BasicDeliverEventArgs eventArgs) =>
+            await Channel.EnsureIsNotNull().BasicAckAsync(eventArgs.DeliveryTag, false);
 
         private async Task ConsumerOnReceived(object sender, BasicDeliverEventArgs eventArgs)
         {
-            var exchangeOptions = _exchanges.FirstOrDefault(x => string.Equals(x.Name, eventArgs.Exchange)).EnsureIsNotNull().Options;
+            var exchangeOptions = _exchanges.FirstOrDefault(x => string.Equals(x.Name, eventArgs.Exchange))
+                .EnsureIsNotNull().Options;
             var context = new MessageHandlingContext(eventArgs, AckAction, exchangeOptions.DisableAutoAck);
             await _messageHandlingPipelineExecutingService.Execute(context);
         }

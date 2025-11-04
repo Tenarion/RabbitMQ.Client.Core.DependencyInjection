@@ -28,7 +28,7 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services
         /// <summary>
         /// A channel that has been created using the connection.
         /// </summary>
-        public IModel? Channel { get;  private set; }
+        public IChannel? Channel { get; private set; }
 
         /// <summary>
         /// Prefetch size value that can be overridden.
@@ -44,7 +44,7 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services
         /// Prefetch count value (batch size).
         /// </summary>
         public abstract ushort PrefetchCount { get; set; }
-        
+
         /// <summary>
         /// The TimeSpan period through which messages will be processing.
         /// </summary>
@@ -57,8 +57,8 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services
 
         private readonly ConcurrentBag<BasicDeliverEventArgs> _messages = new ConcurrentBag<BasicDeliverEventArgs>();
         private Timer? _timer;
-        private readonly object _lock = new object();
-        private bool _disposed = false;
+        private readonly Lock _lock = new();
+        private bool _disposed;
 
         protected BaseBatchMessageHandler(
             IRabbitMqConnectionFactory rabbitMqConnectionFactory,
@@ -69,7 +69,8 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services
             var optionsContainer = batchConsumerConnectionOptions.FirstOrDefault(x => x.Type == GetType());
             if (optionsContainer is null)
             {
-                throw new ArgumentNullException($"Client connection options for {nameof(BaseBatchMessageHandler)} has not been found.", nameof(batchConsumerConnectionOptions));
+                throw new ArgumentNullException(nameof(batchConsumerConnectionOptions),
+                    $"Client connection options for {nameof(BaseBatchMessageHandler)} has not been found.");
             }
 
             _serviceOptions = optionsContainer.ServiceOptions;
@@ -78,21 +79,36 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services
             _loggingService = loggingService;
         }
 
-        public Task StartAsync(CancellationToken cancellationToken)
+        public async Task StartAsync(CancellationToken cancellationToken)
         {
             ValidateProperties();
             _loggingService.LogInformation($"Batch message handler {GetType()} has been started.");
-            Connection = _rabbitMqConnectionFactory.CreateRabbitMqConnection(_serviceOptions).EnsureIsNotNull();
-            Channel = Connection.CreateModel().EnsureIsNotNull();
-            Channel.BasicQos(PrefetchSize, PrefetchCount, false);
-            
+            Connection = (await _rabbitMqConnectionFactory.CreateRabbitMqConnection(_serviceOptions)).EnsureIsNotNull();
+            Channel = (await Connection.CreateChannelAsync(cancellationToken: cancellationToken)).EnsureIsNotNull();
+
+            await Channel.BasicQosAsync(PrefetchSize, PrefetchCount, false, cancellationToken);
+
             if (MessageHandlingPeriod != null)
             {
-                _timer = new Timer(async _ => await ProcessBatchOfMessages(cancellationToken).ConfigureAwait(false), null, MessageHandlingPeriod.Value, MessageHandlingPeriod.Value);
+                _timer = new Timer(_ =>
+                {
+                    Task.Run(async () =>
+                    {
+                        try
+                        {
+                            await ProcessBatchOfMessages(cancellationToken).ConfigureAwait(false);
+                        }
+                        catch (Exception ex)
+                        {
+                            throw new BatchMessageHandlerProcessingException(
+                                "An error occurred while processing a batch of messages in the scheduled period.", ex);
+                        }
+                    }, cancellationToken);
+                }, null, MessageHandlingPeriod.Value, MessageHandlingPeriod.Value);
             }
 
             var consumer = _rabbitMqConnectionFactory.CreateConsumer(Channel);
-            consumer.Received += async (_, eventArgs) =>
+            consumer.ReceivedAsync += async (_, eventArgs) =>
             {
                 lock (_lock)
                 {
@@ -105,9 +121,9 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services
 
                 await ProcessBatchOfMessages(cancellationToken).ConfigureAwait(false);
             };
-            
-            Channel.BasicConsume(queue: QueueName, autoAck: false, consumer: consumer);
-            return Task.CompletedTask;
+
+            await Channel.BasicConsumeAsync(queue: QueueName, autoAck: false, consumer: consumer,
+                cancellationToken: cancellationToken);
         }
 
         private async Task ProcessBatchOfMessages(CancellationToken cancellationToken)
@@ -133,7 +149,8 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services
             foreach (var middleware in _batchMessageHandlingMiddlewares)
             {
                 var previousHandleFunction = handleFunction;
-                handleFunction = async () => await middleware.Handle(messages, previousHandleFunction, cancellationToken);
+                handleFunction = async () =>
+                    await middleware.Handle(messages, previousHandleFunction, cancellationToken);
             }
 
             await handleFunction().ConfigureAwait(false);
@@ -144,18 +161,18 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services
             var messagesCollection = messages.ToList();
             await HandleMessages(messagesCollection, cancellationToken).ConfigureAwait(false);
             var latestDeliveryTag = messagesCollection.Max(x => x.DeliveryTag);
-            Channel.EnsureIsNotNull().BasicAck(latestDeliveryTag, true);
+            await Channel.EnsureIsNotNull().BasicAckAsync(latestDeliveryTag, true, cancellationToken);
         }
 
         private IList<BasicDeliverEventArgs> GetMessages()
         {
             lock (_lock)
             {
-                if (!_messages.Any())
+                if (_messages.IsEmpty)
                 {
                     return new List<BasicDeliverEventArgs>();
                 }
-                
+
                 var messages = _messages.ToList();
                 _messages.Clear();
                 return messages;
@@ -166,12 +183,14 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services
         {
             if (string.IsNullOrEmpty(QueueName))
             {
-                throw new BatchMessageHandlerInvalidPropertyValueException("Queue name could not be empty.", nameof(QueueName));
+                throw new BatchMessageHandlerInvalidPropertyValueException("Queue name could not be empty.",
+                    nameof(QueueName));
             }
 
             if (PrefetchCount < 1)
             {
-                throw new BatchMessageHandlerInvalidPropertyValueException("PrefetchCount value should be more than one.", nameof(PrefetchCount));
+                throw new BatchMessageHandlerInvalidPropertyValueException(
+                    "PrefetchCount value should be more than one.", nameof(PrefetchCount));
             }
         }
 
@@ -181,8 +200,9 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services
         /// <param name="messages">A collection of messages.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns></returns>
-        public abstract Task HandleMessages(IEnumerable<BasicDeliverEventArgs> messages, CancellationToken cancellationToken);
-        
+        public abstract Task HandleMessages(IEnumerable<BasicDeliverEventArgs> messages,
+            CancellationToken cancellationToken);
+
         public Task StopAsync(CancellationToken cancellationToken)
         {
             _timer?.Change(Timeout.Infinite, 0);

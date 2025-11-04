@@ -1,6 +1,6 @@
-using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Microsoft.Extensions.Options;
 using RabbitMQ.Client.Core.DependencyInjection.Configuration;
 using RabbitMQ.Client.Core.DependencyInjection.InternalExtensions.Validation;
@@ -37,22 +37,22 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services
         }
 
         /// <inheritdoc/>
-        public void SetConnectionInfrastructureForRabbitMqServices()
+        public async Task SetConnectionInfrastructureForRabbitMqServices()
         {
             if (_connectionOptions.ProducerOptions != null)
             {
-                var connection = CreateConnection(_connectionOptions.ProducerOptions).EnsureIsNotNull();
-                var channel = CreateChannel(connection);
-                StartClient(channel);
+                var connection = (await CreateConnection(_connectionOptions.ProducerOptions)).EnsureIsNotNull();
+                var channel = await CreateChannel(connection);
+                await StartClient(channel);
                 _producingService.UseConnection(connection);
                 _producingService.UseChannel(channel);
             }
 
             if (_connectionOptions.ConsumerOptions != null)
             {
-                var connection = CreateConnection(_connectionOptions.ConsumerOptions).EnsureIsNotNull();
-                var channel = CreateChannel(connection);
-                StartClient(channel);
+                var connection = (await CreateConnection(_connectionOptions.ConsumerOptions)).EnsureIsNotNull();
+                var channel = await CreateChannel(connection);
+                await StartClient(channel);
                 var consumer = _rabbitMqConnectionFactory.CreateConsumer(channel);
                 _consumingService.UseConnection(connection);
                 _consumingService.UseChannel(channel);
@@ -60,23 +60,20 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services
             }
         }
 
-        private IConnection? CreateConnection(RabbitMqServiceOptions options) => _rabbitMqConnectionFactory.CreateRabbitMqConnection(options);
+        private async Task<IConnection?> CreateConnection(RabbitMqServiceOptions options) => await _rabbitMqConnectionFactory.CreateRabbitMqConnection(options);
 
-        private IModel CreateChannel(IConnection connection)
+        private async Task<IChannel> CreateChannel(IConnection connection)
         {
-            connection.CallbackException += HandleConnectionCallbackException;
-            if (connection is IAutorecoveringConnection recoveringConnection)
-            {
-                recoveringConnection.ConnectionRecoveryError += HandleConnectionRecoveryError;
-            }
-            
-            var channel = connection.CreateModel();
-            channel.CallbackException += HandleChannelCallbackException;
-            channel.BasicRecoverOk += HandleChannelBasicRecoverOk;
+            connection.CallbackExceptionAsync += HandleConnectionCallbackException!;
+            connection.ConnectionRecoveryErrorAsync += HandleConnectionRecoveryError!;
+
+            var channel = await connection.CreateChannelAsync();
+            channel.CallbackExceptionAsync += HandleChannelCallbackException!;
+            channel.BasicAcksAsync += HandleChannelBasicRecoverOk!;
             return channel;
         }
 
-        private void StartClient(IModel channel)
+        private async Task StartClient(IChannel channel)
         {
             var deadLetterExchanges = _exchanges
                 .Select(x => x.Options)
@@ -85,25 +82,25 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services
                 .Distinct(new DeadLetterExchangeEqualityComparer())
                 .ToList();
 
-            StartChannel(channel, _exchanges, deadLetterExchanges);
+            await StartChannel(channel, _exchanges, deadLetterExchanges);
         }
 
-        private static void StartChannel(IModel channel, IEnumerable<RabbitMqExchange> exchanges, IEnumerable<DeadLetterExchange> deadLetterExchanges)
+        private static async Task StartChannel(IChannel channel, IEnumerable<RabbitMqExchange> exchanges, IEnumerable<DeadLetterExchange> deadLetterExchanges)
         {
             foreach (var exchange in deadLetterExchanges)
             {
-                StartDeadLetterExchange(channel, exchange);
+                await StartDeadLetterExchange(channel, exchange);
             }
 
             foreach (var exchange in exchanges)
             {
-                StartExchange(channel, exchange);
+                await StartExchange(channel, exchange);
             }
         }
 
-        private static void StartDeadLetterExchange(IModel channel, DeadLetterExchange exchange)
+        private static async Task StartDeadLetterExchange(IChannel channel, DeadLetterExchange exchange)
         {
-            channel.ExchangeDeclare(
+            await channel.ExchangeDeclareAsync(
                 exchange: exchange.Name,
                 type: exchange.Type,
                 durable: true,
@@ -111,9 +108,9 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services
                 arguments: null);
         }
 
-        private static void StartExchange(IModel channel, RabbitMqExchange exchange)
+        private static async Task StartExchange(IChannel channel, RabbitMqExchange exchange)
         {
-            channel.ExchangeDeclare(
+            await channel.ExchangeDeclareAsync(
                 exchange: exchange.Name,
                 type: exchange.Options.Type,
                 durable: exchange.Options.Durable,
@@ -122,13 +119,13 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services
 
             foreach (var queue in exchange.Options.Queues)
             {
-                StartQueue(channel, queue, exchange.Name);
+                await StartQueue(channel, queue, exchange.Name);
             }
         }
 
-        private static void StartQueue(IModel channel, RabbitMqQueueOptions queue, string exchangeName)
+        private static async Task StartQueue(IChannel channel, RabbitMqQueueOptions queue, string exchangeName)
         {
-            channel.QueueDeclare(
+            await channel.QueueDeclareAsync(
                 queue: queue.Name,
                 durable: queue.Durable,
                 exclusive: queue.Exclusive,
@@ -139,7 +136,7 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services
             {
                 foreach (var route in queue.RoutingKeys)
                 {
-                    channel.QueueBind(
+                    await channel.QueueBindAsync(
                         queue: queue.Name,
                         exchange: exchangeName,
                         routingKey: route);
@@ -148,53 +145,55 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services
             else
             {
                 // If there are not any routing keys then make a bind with a queue name.
-                channel.QueueBind(
+                await channel.QueueBindAsync(
                     queue: queue.Name,
                     exchange: exchangeName,
                     routingKey: queue.Name);
             }
         }
 
-        private void HandleConnectionCallbackException(object sender, CallbackExceptionEventArgs? @event)
+        private Task HandleConnectionCallbackException(object sender, CallbackExceptionEventArgs? @event)
         {
             if (@event?.Exception is null)
             {
-                return;
+                return Task.CompletedTask;
             }
 
             _loggingService.LogError(@event.Exception, @event.Exception.Message);
             throw @event.Exception;
         }
 
-        private void HandleConnectionRecoveryError(object sender, ConnectionRecoveryErrorEventArgs? @event)
+        private Task HandleConnectionRecoveryError(object sender, ConnectionRecoveryErrorEventArgs? @event)
         {
             if (@event?.Exception is null)
             {
-                return;
+                return Task.CompletedTask;
             }
 
             _loggingService.LogError(@event.Exception, @event.Exception.Message);
             throw @event.Exception;
         }
 
-        private void HandleChannelBasicRecoverOk(object sender, EventArgs? @event)
+        private Task HandleChannelBasicRecoverOk(object sender, BasicAckEventArgs? @event)
         {
             if (@event is null)
             {
-                return;
+                return Task.CompletedTask;
             }
-            
+
             _loggingService.LogInformation("Connection has been reestablished");
+            return Task.CompletedTask;
         }
 
-        private void HandleChannelCallbackException(object sender, CallbackExceptionEventArgs? @event)
+        private Task HandleChannelCallbackException(object sender, CallbackExceptionEventArgs? @event)
         {
             if (@event?.Exception is null)
             {
-                return;
+                return Task.CompletedTask;
             }
 
             _loggingService.LogError(@event.Exception, @event.Exception.Message);
+            throw @event.Exception;
         }
     }
 }

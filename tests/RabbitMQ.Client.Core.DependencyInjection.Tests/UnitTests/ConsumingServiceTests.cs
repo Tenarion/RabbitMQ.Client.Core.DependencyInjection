@@ -22,7 +22,7 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Tests.UnitTests
         [InlineData(25)]
         public async Task ShouldProperlyConsumeMessages(int numberOfMessages)
         {
-            var channelMock = new Mock<IModel>();
+            var channelMock = new Mock<IChannel>();
             var connectionMock = new Mock<IConnection>();
             var consumer = new AsyncEventingBasicConsumer(channelMock.Object);
 
@@ -30,33 +30,34 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Tests.UnitTests
             
             const string exchangeName = "exchange";
             var exchange = new RabbitMqExchange(exchangeName, ClientExchangeType.Consumption, new RabbitMqExchangeOptions());
-            var consumingService = CreateConsumingService(messageHandlingPipelineExecutingServiceMock.Object, new[] { exchange });
+            var consumingService = CreateConsumingService(messageHandlingPipelineExecutingServiceMock.Object, [exchange
+            ]);
             
             consumingService.UseConnection(connectionMock.Object);
             consumingService.UseChannel(channelMock.Object);
             consumingService.UseConsumer(consumer);
 
-            await consumer.HandleBasicDeliver(
+            await consumer.HandleBasicDeliverAsync(
                 "1",
                 0,
                 false,
                 exchangeName,
                 "routing,key",
-                null,
+                new BasicProperties(),
                 new ReadOnlyMemory<byte>());
             messageHandlingPipelineExecutingServiceMock.Verify(x => x.Execute(It.IsAny<MessageHandlingContext>()), Times.Never);
 
-            consumingService.StartConsuming();
+            await consumingService.StartConsuming();
 
             for (var i = 1; i <= numberOfMessages; i++)
             {
-                await consumer.HandleBasicDeliver(
+                await consumer.HandleBasicDeliverAsync(
                     "1",
                     (ulong)numberOfMessages,
                     false,
                     "exchange",
                     "routing,key",
-                    null,
+                    new BasicProperties(),
                     new ReadOnlyMemory<byte>());
             }
 
@@ -73,7 +74,7 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Tests.UnitTests
         [InlineData(25)]
         public async Task ShouldProperlyConsumeMessagesButWithoutAutoAck(int numberOfMessages)
         {
-            var channelMock = new Mock<IModel>();
+            var channelMock = new Mock<IChannel>();
             var connectionMock = new Mock<IConnection>();
             var consumer = new AsyncEventingBasicConsumer(channelMock.Object);
 
@@ -81,33 +82,34 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Tests.UnitTests
             
             const string exchangeName = "exchange";
             var exchange = new RabbitMqExchange(exchangeName, ClientExchangeType.Consumption, new RabbitMqExchangeOptions { DisableAutoAck = true });
-            var consumingService = CreateConsumingService(messageHandlingPipelineExecutingServiceMock.Object, new[] { exchange });
+            var consumingService = CreateConsumingService(messageHandlingPipelineExecutingServiceMock.Object, [exchange
+            ]);
             
             consumingService.UseConnection(connectionMock.Object);
             consumingService.UseChannel(channelMock.Object);
             consumingService.UseConsumer(consumer);
 
-            await consumer.HandleBasicDeliver(
+            await consumer.HandleBasicDeliverAsync(
                 "1",
                 0,
                 false,
                 exchangeName,
                 "routing,key",
-                null,
+                new BasicProperties(),
                 new ReadOnlyMemory<byte>());
             messageHandlingPipelineExecutingServiceMock.Verify(x => x.Execute(It.IsAny<MessageHandlingContext>()), Times.Never);
 
-            consumingService.StartConsuming();
+            await consumingService.StartConsuming();
 
             for (var i = 1; i <= numberOfMessages; i++)
             {
-                await consumer.HandleBasicDeliver(
+                await consumer.HandleBasicDeliverAsync(
                     "1",
                     (ulong)numberOfMessages,
                     false,
                     "exchange",
                     "routing,key",
-                    null,
+                    new BasicProperties(),
                     new ReadOnlyMemory<byte>());
             }
 
@@ -123,7 +125,7 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Tests.UnitTests
         [InlineData(25)]
         public async Task ShouldProperlyStopConsumingMessages(int numberOfMessages)
         {
-            var channelMock = new Mock<IModel>();
+            var channelMock = new Mock<IChannel>();
             var connectionMock = new Mock<IConnection>();
             var consumer = new AsyncEventingBasicConsumer(channelMock.Object);
 
@@ -131,35 +133,36 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Tests.UnitTests
 
             const string exchangeName = "exchange";
             var exchange = new RabbitMqExchange(exchangeName, ClientExchangeType.Consumption, new RabbitMqExchangeOptions());
-            var consumingService = CreateConsumingService(messageHandlingPipelineExecutingServiceMock.Object, new[] { exchange });
+            var consumingService = CreateConsumingService(messageHandlingPipelineExecutingServiceMock.Object, [exchange
+            ]);
             
             consumingService.UseConnection(connectionMock.Object);
             consumingService.UseChannel(channelMock.Object);
             consumingService.UseConsumer(consumer);
             
-            consumingService.StartConsuming();
+            await consumingService.StartConsuming();
             for (var i = 1; i <= numberOfMessages; i++)
             {
-                await consumer.HandleBasicDeliver(
+                await consumer.HandleBasicDeliverAsync(
                     "1",
                     (ulong)numberOfMessages,
                     false,
                     exchangeName,
                     "routing,key",
-                    null,
+                    new BasicProperties(),
                     new ReadOnlyMemory<byte>());
             }
 
             messageHandlingPipelineExecutingServiceMock.Verify(x => x.Execute(It.IsAny<MessageHandlingContext>()), Times.Exactly(numberOfMessages));
 
-            consumingService.StopConsuming();
-            await consumer.HandleBasicDeliver(
+            await consumingService.StopConsuming();
+            await consumer.HandleBasicDeliverAsync(
                 "1",
                 0,
                 false,
                 "exchange",
                 "routing,key",
-                null,
+                new BasicProperties(),
                 new ReadOnlyMemory<byte>());
 
             messageHandlingPipelineExecutingServiceMock.Verify(x => x.Execute(It.IsAny<MessageHandlingContext>()), Times.Exactly(numberOfMessages));

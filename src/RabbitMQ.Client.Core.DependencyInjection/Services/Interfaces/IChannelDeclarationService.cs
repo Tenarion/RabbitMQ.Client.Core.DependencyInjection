@@ -1,3 +1,5 @@
+using System.Threading.Tasks;
+
 namespace RabbitMQ.Client.Core.DependencyInjection.Services.Interfaces
 {
     /// <summary>
@@ -8,6 +10,6 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services.Interfaces
         /// <summary>
         /// Create connection and declare everything for both consuming and producing services.
         /// </summary>
-        void SetConnectionInfrastructureForRabbitMqServices();
+        Task SetConnectionInfrastructureForRabbitMqServices();
     }
 }

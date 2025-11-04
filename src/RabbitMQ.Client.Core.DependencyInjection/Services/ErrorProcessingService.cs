@@ -31,7 +31,7 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services
             var eventArgs = context.Message;
             if (context.AutoAckEnabled)
             {
-                context.AcknowledgeMessage();
+                await context.AcknowledgeMessage();
             }
 
             _loggingService.LogError(exception, $"An error occurred while processing received message with the delivery tag {eventArgs.DeliveryTag}.");
@@ -46,7 +46,7 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services
                 _loggingService.LogWarning($"Could not detect an exchange \"{eventArgs.Exchange}\" to determine the necessity of resending the failed message. The message won't be re-queued");
                 return;
             }
-            
+
             if (!exchange.Options.RequeueFailedMessages)
             {
                 _loggingService.LogWarning($"RequeueFailedMessages option for an exchange \"{eventArgs.Exchange}\" is disabled. The message won't be re-queued");
@@ -64,40 +64,42 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services
                 _loggingService.LogWarning($"The value RequeueTimeoutMilliseconds for an exchange \"{eventArgs.Exchange}\" less than 1 millisecond. Configuration is invalid. The message won't be re-queued");
                 return;
             }
-            
+
             if (exchange.Options.RequeueAttempts < 1)
             {
                 _loggingService.LogWarning($"The value RequeueAttempts for an exchange \"{eventArgs.Exchange}\" less than 1. Configuration is invalid. The message won't be re-queued");
                 return;
             }
 
-            if (eventArgs.BasicProperties.Headers is null)
+            var properties = new BasicProperties(eventArgs.BasicProperties)
             {
-                eventArgs.BasicProperties.Headers = new Dictionary<string, object>();
-            }
+                Headers = eventArgs.BasicProperties.Headers ?? new Dictionary<string, object?>()
+            };
 
-            if (!eventArgs.BasicProperties.Headers.ContainsKey("re-queue-attempts"))
+            if (!properties.Headers.ContainsKey("re-queue-attempts"))
             {
-                eventArgs.BasicProperties.Headers.Add("re-queue-attempts", 1);
-                await RequeueMessage(eventArgs, exchange.Options.RequeueTimeoutMilliseconds);
+                properties.Headers.Add("re-queue-attempts", 1);
+                await RequeueMessage(eventArgs, properties, exchange.Options.RequeueTimeoutMilliseconds);
                 return;
             }
-            
-            var currentAttempt = (int)eventArgs.BasicProperties.Headers["re-queue-attempts"];
+
+            var currentAttempt = (int?)eventArgs.BasicProperties.Headers?["re-queue-attempts"];
             if (currentAttempt < exchange.Options.RequeueAttempts)
             {
-                eventArgs.BasicProperties.Headers["re-queue-attempts"] = currentAttempt + 1;
-                await RequeueMessage(eventArgs, exchange.Options.RequeueTimeoutMilliseconds);
+                if (eventArgs.BasicProperties.Headers != null)
+                    eventArgs.BasicProperties.Headers["re-queue-attempts"] = currentAttempt + 1;
+
+                await RequeueMessage(eventArgs, properties, exchange.Options.RequeueTimeoutMilliseconds);
             }
             else
             {
-                _loggingService.LogInformation("The failed message would not be re-queued. Attempts limit exceeded");   
+                _loggingService.LogInformation("The failed message would not be re-queued. Attempts limit exceeded");
             }
         }
-        
-        protected async Task RequeueMessage(BasicDeliverEventArgs eventArgs, int timeoutMilliseconds)
+
+        protected async Task RequeueMessage(BasicDeliverEventArgs eventArgs, BasicProperties properties, int timeoutMilliseconds)
         {
-            await _producingService.SendAsync(eventArgs.Body, eventArgs.BasicProperties, eventArgs.Exchange, eventArgs.RoutingKey, timeoutMilliseconds);
+            await _producingService.SendAsync(eventArgs.Body, properties, eventArgs.Exchange, eventArgs.RoutingKey, timeoutMilliseconds);
             _loggingService.LogInformation("The failed message has been re-queued");
         }
     }

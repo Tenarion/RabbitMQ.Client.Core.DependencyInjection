@@ -16,7 +16,7 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Tests.IntegrationTests
     [SuppressMessage("ReSharper", "AccessToDisposedClosure")]
     public class RabbitMqServicesTests
     {
-        private readonly TimeSpan _globalTestsTimeout = TimeSpan.FromSeconds(60);
+        private readonly TimeSpan _globalTestsTimeout = TimeSpan.FromSeconds(30);
 
         private const string DefaultExchangeName = "exchange.name";
         private const string FirstRoutingKey = "first.routing.key";
@@ -40,10 +40,10 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Tests.IntegrationTests
             var producingService = serviceProvider.GetRequiredService<IProducingService>();
             var channelDeclarationService = serviceProvider.GetRequiredService<IChannelDeclarationService>();
             
-            channelDeclarationService.SetConnectionInfrastructureForRabbitMqServices();
-            consumingService.StartConsuming();
+            await channelDeclarationService.SetConnectionInfrastructureForRabbitMqServices();
+            await consumingService.StartConsuming();
             using var resetEvent = new AutoResetEvent(false);
-            consumingService.Consumer.EnsureIsNotNull().Received += (_, _) =>
+            consumingService.Consumer.EnsureIsNotNull().ReceivedAsync += (_, _) =>
             {
                 resetEvent.Set();
                 return Task.CompletedTask;
@@ -74,10 +74,10 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Tests.IntegrationTests
             var producingService = serviceProvider.GetRequiredService<IProducingService>();
             var channelDeclarationService = serviceProvider.GetRequiredService<IChannelDeclarationService>();
             
-            channelDeclarationService.SetConnectionInfrastructureForRabbitMqServices();
-            consumingService.StartConsuming();
+            await channelDeclarationService.SetConnectionInfrastructureForRabbitMqServices();
+            await consumingService.StartConsuming();
             using var resetEvent = new AutoResetEvent(false);
-            consumingService.Consumer.EnsureIsNotNull().Received += (_, _) =>
+            consumingService.Consumer.EnsureIsNotNull().ReceivedAsync += (_, _) =>
             {
                 resetEvent.Set();
                 return Task.CompletedTask;
@@ -95,7 +95,7 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Tests.IntegrationTests
         private static RabbitMqServiceOptions GetClientOptions() =>
             new()
             {
-                HostName = "rabbitmq",
+                HostName = "localhost",
                 Port = 5672,
                 UserName = "guest",
                 Password = "guest",

@@ -32,7 +32,7 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services
             await ProcessMessageEvent(context, matchingRoutes).ConfigureAwait(false);
             if (context.AutoAckEnabled)
             {
-                context.AcknowledgeMessage();
+                await context.AcknowledgeMessage();
             }
             _loggingService.LogInformation($"Message processing finished successfully. Acknowledge has been sent with deliveryTag {eventArgs.DeliveryTag}.");
         }

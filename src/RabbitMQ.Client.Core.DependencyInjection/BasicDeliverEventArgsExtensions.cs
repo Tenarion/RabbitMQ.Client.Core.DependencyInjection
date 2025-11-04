@@ -2,7 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using Newtonsoft.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using RabbitMQ.Client.Events;
 
 namespace RabbitMQ.Client.Core.DependencyInjection
@@ -33,21 +34,21 @@ namespace RabbitMQ.Client.Core.DependencyInjection
         {
             eventArgs.EnsureIsNotNull();
             var messageString = Encoding.UTF8.GetString(eventArgs.Body.ToArray());
-            return JsonConvert.DeserializeObject<T>(messageString);
+            return (T)JsonSerializer.Deserialize<T>(messageString)!;
         }
         
         /// <summary>
         /// Get message payload.
         /// </summary>
         /// <param name="eventArgs">Message event args.</param>
-        /// <param name="settings">Serializer settings <see cref="JsonSerializerSettings"/>.</param>
+        /// <param name="settings">Serializer settings <see cref="JsonSerializerOptions"/>.</param>
         /// <typeparam name="T">Type of a message body.</typeparam>
         /// <returns>Object of type <see cref="T"/>.</returns>
-        public static T? GetPayload<T>(this BasicDeliverEventArgs eventArgs, JsonSerializerSettings settings)
+        public static T? GetPayload<T>(this BasicDeliverEventArgs eventArgs, JsonSerializerOptions settings)
         {
             eventArgs.EnsureIsNotNull();
             var messageString = Encoding.UTF8.GetString(eventArgs.Body.ToArray());
-            return JsonConvert.DeserializeObject<T>(messageString, settings);
+            return JsonSerializer.Deserialize<T>(messageString, settings);
         }
         
         /// <summary>
@@ -59,9 +60,21 @@ namespace RabbitMQ.Client.Core.DependencyInjection
         /// <returns>Object of type <see cref="T"/>.</returns>
         public static T? GetPayload<T>(this BasicDeliverEventArgs eventArgs, IEnumerable<JsonConverter> converters)
         {
+            // Ensure eventArgs is not null (this method must exist in your codebase)
             eventArgs.EnsureIsNotNull();
+
+            // Convert the byte array to string
             var messageString = Encoding.UTF8.GetString(eventArgs.Body.ToArray());
-            return JsonConvert.DeserializeObject<T>(messageString, converters.ToArray());
+
+            // Create JsonSerializerOptions and add converters
+            var options = new JsonSerializerOptions();
+            foreach(var converter in converters)
+            {
+                options.Converters.Add(converter);
+            }
+
+            // Deserialize the message string to the specified type
+            return JsonSerializer.Deserialize<T>(messageString, options);
         }
         
         /// <summary>
@@ -75,7 +88,7 @@ namespace RabbitMQ.Client.Core.DependencyInjection
         {
             eventArgs.EnsureIsNotNull();
             var messageString = Encoding.UTF8.GetString(eventArgs.Body.ToArray());
-            return JsonConvert.DeserializeAnonymousType(messageString, anonymousTypeObject);
+            return (T)JsonSerializer.Deserialize(messageString, anonymousTypeObject!.GetType())!;
         }
         
         /// <summary>
@@ -83,14 +96,14 @@ namespace RabbitMQ.Client.Core.DependencyInjection
         /// </summary>
         /// <param name="eventArgs">Message event args.</param>
         /// <param name="anonymousTypeObject">An anonymous object base.</param>
-        /// <param name="settings">Serializer settings <see cref="JsonSerializerSettings"/>.</param>
+        /// <param name="settings">Serializer settings <see cref="JsonSerializerOptions"/>.</param>
         /// <typeparam name="T">Type of an anonymous object.</typeparam>
         /// <returns>Anonymous object.</returns>
-        public static T GetAnonymousPayload<T>(this BasicDeliverEventArgs eventArgs, T anonymousTypeObject, JsonSerializerSettings settings)
+        public static T GetAnonymousPayload<T>(this BasicDeliverEventArgs eventArgs, T anonymousTypeObject, JsonSerializerOptions settings)
         {
             eventArgs.EnsureIsNotNull();
             var messageString = Encoding.UTF8.GetString(eventArgs.Body.ToArray());
-            return JsonConvert.DeserializeAnonymousType(messageString, anonymousTypeObject, settings);
+            return (T)JsonSerializer.Deserialize(messageString, anonymousTypeObject!.GetType(), settings)!;
         }
 
         private static BasicDeliverEventArgs EnsureIsNotNull(this BasicDeliverEventArgs eventArgs)

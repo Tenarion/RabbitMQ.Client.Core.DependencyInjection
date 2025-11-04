@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using RabbitMQ.Client.Events;
 
 namespace RabbitMQ.Client.Core.DependencyInjection.Services.Interfaces
@@ -15,7 +16,7 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services.Interfaces
         /// <summary>
         /// RabbitMQ consuming channel.
         /// </summary>
-        IModel? Channel { get; }
+        IChannel? Channel { get; }
         
         /// <summary>
         /// Asynchronous consumer. 
@@ -25,12 +26,12 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services.Interfaces
         /// <summary>
         /// Start consuming (getting messages).
         /// </summary>
-        void StartConsuming();
+        Task StartConsuming();
     
         /// <summary>
         /// Stop consuming (getting messages).
         /// </summary>
-        void StopConsuming();
+        Task StopConsuming();
 
         /// <summary>
         /// Specify a consumer instance that will be used by the service.
