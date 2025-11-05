@@ -11,5 +11,11 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services.Interfaces
         /// Create connection and declare everything for both consuming and producing services.
         /// </summary>
         Task SetConnectionInfrastructureForRabbitMqServices();
+
+        /// <summary>
+        /// A task that resolves when the setup is complete.
+        /// </summary>
+        /// <returns></returns>
+        Task WaitForSetupCompletionAsync();
     }
 }

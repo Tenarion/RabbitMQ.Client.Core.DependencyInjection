@@ -19,6 +19,8 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services
         private readonly IRabbitMqConnectionFactory _rabbitMqConnectionFactory;
         private readonly IEnumerable<RabbitMqExchange> _exchanges;
         private readonly ILoggingService _loggingService;
+
+        private readonly TaskCompletionSource<bool> _setupCompleteSignal = new TaskCompletionSource<bool>();
         
         public ChannelDeclarationService(
             IProducingService producingService,
@@ -58,6 +60,12 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services
                 _consumingService.UseChannel(channel);
                 _consumingService.UseConsumer(consumer);
             }
+            _setupCompleteSignal.SetResult(true);
+        }
+
+        public Task WaitForSetupCompletionAsync()
+        {
+            return _setupCompleteSignal.Task;
         }
 
         private async Task<IConnection?> CreateConnection(RabbitMqServiceOptions options) => await _rabbitMqConnectionFactory.CreateRabbitMqConnection(options);

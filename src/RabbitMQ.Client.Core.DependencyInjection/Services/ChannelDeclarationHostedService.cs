@@ -12,21 +12,28 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services
     public class ChannelDeclarationHostedService : IHostedService
     {
         private readonly IChannelDeclarationService _channelDeclarationService;
+        private readonly TaskCompletionSource<bool> _setupCompleteSignal;
 
         public ChannelDeclarationHostedService(IChannelDeclarationService channelDeclarationService)
         {
             _channelDeclarationService = channelDeclarationService;
+            _setupCompleteSignal = new TaskCompletionSource<bool>();
         }
 
-        public Task StartAsync(CancellationToken cancellationToken)
+        public async Task StartAsync(CancellationToken cancellationToken)
         {
-            _channelDeclarationService.SetConnectionInfrastructureForRabbitMqServices();
-            return Task.CompletedTask;
+            await _channelDeclarationService.SetConnectionInfrastructureForRabbitMqServices();
+            _setupCompleteSignal.SetResult(true);
         }
 
         public Task StopAsync(CancellationToken cancellationToken)
         {
             return Task.CompletedTask;
+        }
+
+        public Task WaitForSetupCompletionAsync()
+        {
+            return _setupCompleteSignal.Task;
         }
     }
 }
