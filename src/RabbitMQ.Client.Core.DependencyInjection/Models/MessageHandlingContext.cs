@@ -8,12 +8,14 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Models
     public class MessageHandlingContext
     {
         private readonly AsyncEventHandler<BasicDeliverEventArgs> _ackAction;
+        private readonly AsyncEventHandler<BasicDeliverEventArgs> _nackAction;
         private bool _alreadyAcknowledged;
 
-        public MessageHandlingContext(BasicDeliverEventArgs message, AsyncEventHandler<BasicDeliverEventArgs> ackAction, bool disableAutoAck)
+        public MessageHandlingContext(BasicDeliverEventArgs message, AsyncEventHandler<BasicDeliverEventArgs> ackAction, AsyncEventHandler<BasicDeliverEventArgs> nackAction, bool disableAutoAck)
         {
             Message = message;
             _ackAction = ackAction;
+            _nackAction = nackAction;
             AutoAckEnabled = !disableAutoAck;
         }
 
@@ -29,6 +31,17 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Models
             }
 
             await _ackAction(this, Message);
+            _alreadyAcknowledged = true;
+        }
+
+        public async Task RejectMessage(bool requeue)
+        {
+            if (_alreadyAcknowledged)
+            {
+                throw new MessageHasAlreadyBeenAcknowledgedException();
+            }
+
+            await _nackAction(requeue, Message);
             _alreadyAcknowledged = true;
         }
     }

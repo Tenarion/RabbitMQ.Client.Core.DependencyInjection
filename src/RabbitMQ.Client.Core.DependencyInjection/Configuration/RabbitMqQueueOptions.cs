@@ -8,7 +8,7 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Configuration
     public class RabbitMqQueueOptions
     {
         /// <summary>
-        /// Queue name.
+        /// Queue name. If empty, a server-generated name will be used.
         /// </summary>
         public string Name { get; set; } = string.Empty;
 

@@ -133,7 +133,7 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services
 
         private static async Task StartQueue(IChannel channel, RabbitMqQueueOptions queue, string exchangeName)
         {
-            await channel.QueueDeclareAsync(
+            var queueDeclareOk = await channel.QueueDeclareAsync(
                 queue: queue.Name,
                 durable: queue.Durable,
                 exclusive: queue.Exclusive,
@@ -145,7 +145,7 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services
                 foreach (var route in queue.RoutingKeys)
                 {
                     await channel.QueueBindAsync(
-                        queue: queue.Name,
+                        queue: queueDeclareOk.QueueName,
                         exchange: exchangeName,
                         routingKey: route);
                 }
@@ -154,9 +154,9 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services
             {
                 // If there are not any routing keys then make a bind with a queue name.
                 await channel.QueueBindAsync(
-                    queue: queue.Name,
+                    queue: queueDeclareOk.QueueName,
                     exchange: exchangeName,
-                    routingKey: queue.Name);
+                    routingKey: queueDeclareOk.QueueName);
             }
         }
 

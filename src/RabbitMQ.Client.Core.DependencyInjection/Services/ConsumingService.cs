@@ -116,11 +116,14 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services
         private async Task AckAction(object sender, BasicDeliverEventArgs eventArgs) =>
             await Channel.EnsureIsNotNull().BasicAckAsync(eventArgs.DeliveryTag, false);
 
+        private async Task NackAction(object sender, BasicDeliverEventArgs eventArgs) =>
+            await Channel.EnsureIsNotNull().BasicNackAsync(eventArgs.DeliveryTag, false, (bool)sender);
+
         private async Task ConsumerOnReceived(object sender, BasicDeliverEventArgs eventArgs)
         {
             var exchangeOptions = _exchanges.FirstOrDefault(x => string.Equals(x.Name, eventArgs.Exchange))
                 .EnsureIsNotNull().Options;
-            var context = new MessageHandlingContext(eventArgs, AckAction, exchangeOptions.DisableAutoAck);
+            var context = new MessageHandlingContext(eventArgs, AckAction, NackAction, exchangeOptions.DisableAutoAck);
             await _messageHandlingPipelineExecutingService.Execute(context);
         }
     }

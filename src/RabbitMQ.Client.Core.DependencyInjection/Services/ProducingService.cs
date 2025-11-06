@@ -85,7 +85,7 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services
         }
 
         /// <inheritdoc/>
-        public async Task SendJson(string json, string exchangeName, string routingKey)
+        public async Task SendJsonAsync(string json, string exchangeName, string routingKey)
         {
             EnsureProducingChannelIsNotNull();
             ValidateArguments(exchangeName, routingKey);
@@ -95,14 +95,14 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services
         }
 
         /// <inheritdoc/>
-        public async Task SendJson(string json, string exchangeName, string routingKey, int millisecondsDelay)
+        public async Task SendJsonAsync(string json, string exchangeName, string routingKey, int millisecondsDelay)
         {
             EnsureProducingChannelIsNotNull();
             ValidateArguments(exchangeName, routingKey);
             var deadLetterExchange = GetDeadLetterExchange(exchangeName);
             var delayedQueueName =
                 await DeclareDelayedQueue(exchangeName, deadLetterExchange, routingKey, millisecondsDelay);
-            await SendJson(json, deadLetterExchange, delayedQueueName);
+            await SendJsonAsync(json, deadLetterExchange, delayedQueueName);
         }
 
         /// <inheritdoc/>

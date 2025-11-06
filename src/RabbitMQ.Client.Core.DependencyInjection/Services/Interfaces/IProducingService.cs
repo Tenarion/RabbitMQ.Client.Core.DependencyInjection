@@ -43,7 +43,7 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services.Interfaces
         /// <param name="json">Json message.</param>
         /// <param name="exchangeName">Exchange name.</param>
         /// <param name="routingKey">Routing key.</param>
-        Task SendJson(string json, string exchangeName, string routingKey);
+        Task SendJsonAsync(string json, string exchangeName, string routingKey);
 
         /// <summary>
         /// Send a delayed message.
@@ -52,7 +52,7 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services.Interfaces
         /// <param name="exchangeName"></param>
         /// <param name="routingKey"></param>
         /// <param name="millisecondsDelay">Delay time in milliseconds.</param>
-        Task SendJson(string json, string exchangeName, string routingKey, int millisecondsDelay);
+        Task SendJsonAsync(string json, string exchangeName, string routingKey, int millisecondsDelay);
 
         /// <summary>
         /// Send a message.
