@@ -27,7 +27,7 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Tests.UnitTests
                 errorProcessingServiceMock.Object,
                 []);
 
-            var context = new MessageHandlingContext(args, AckAction, false);
+            var context = new MessageHandlingContext(args, AckAction, NackAction, false);
             await service.Execute(context);
             messageHandlingServiceMock.Verify(x => x.HandleMessageReceivingEvent(It.IsAny<MessageHandlingContext>()), Times.Once);
         }
@@ -54,7 +54,7 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Tests.UnitTests
                 messageHandlingServiceMock.Object,
                 errorProcessingServiceMock.Object,
                 middlewares);
-            var context = new MessageHandlingContext(args, AckAction, false);
+            var context = new MessageHandlingContext(args, AckAction, NackAction, false);
             await service.Execute(context);
             
             messageHandlingServiceMock.Verify(x => x.HandleMessageReceivingEvent(It.IsAny<MessageHandlingContext>()), Times.Once);
@@ -88,7 +88,7 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Tests.UnitTests
                 messageHandlingServiceMock.Object,
                 errorProcessingServiceMock.Object,
                 middlewares);
-            var context = new MessageHandlingContext(args, AckAction, false);
+            var context = new MessageHandlingContext(args, AckAction, NackAction, false);
             await service.Execute(context);
             
             errorProcessingServiceMock.Verify(x => x.HandleMessageProcessingFailure(It.IsAny<MessageHandlingContext>(), exception), Times.Once);
@@ -104,5 +104,10 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Tests.UnitTests
             new MessageHandlingPipelineExecutingService(messageHandlingService, errorProcessingService, middlewares);
 
         private static Task AckAction(object sender, BasicDeliverEventArgs message) { return Task.CompletedTask; }
+
+        private static Task NackAction(object sender, BasicDeliverEventArgs message)
+        {
+            return Task.CompletedTask;
+        }
     }
 }

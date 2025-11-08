@@ -73,7 +73,7 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Tests.UnitTests
                 new BasicProperties(),
                 new ReadOnlyMemory<byte>()
             );
-            var context = new MessageHandlingContext(eventArgs, (_, _) => Task.CompletedTask, false);
+            var context = new MessageHandlingContext(eventArgs, (_, _) => Task.CompletedTask, (_, _) => Task.CompletedTask,  false);
             await service.HandleMessageReceivingEvent(context);
 
             var messageHandlerTimes = testDataModel.MessageHandlerShouldTrigger ? Times.Once() : Times.Never();

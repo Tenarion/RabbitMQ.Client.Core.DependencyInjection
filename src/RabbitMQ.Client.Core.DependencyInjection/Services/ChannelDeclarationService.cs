@@ -45,7 +45,7 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services
             {
                 var connection = (await CreateConnection(_connectionOptions.ProducerOptions)).EnsureIsNotNull();
                 var channel = await CreateChannel(connection);
-                await StartClient(channel);
+                await StartClient(channel, ClientExchangeType.Production);
                 _producingService.UseConnection(connection);
                 _producingService.UseChannel(channel);
             }
@@ -54,7 +54,7 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services
             {
                 var connection = (await CreateConnection(_connectionOptions.ConsumerOptions)).EnsureIsNotNull();
                 var channel = await CreateChannel(connection);
-                await StartClient(channel);
+                await StartClient(channel, ClientExchangeType.Consumption);
                 var consumer = _rabbitMqConnectionFactory.CreateConsumer(channel);
                 _consumingService.UseConnection(connection);
                 _consumingService.UseChannel(channel);
@@ -81,7 +81,7 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services
             return channel;
         }
 
-        private async Task StartClient(IChannel channel)
+        private async Task StartClient(IChannel channel, ClientExchangeType clientExchangeType = ClientExchangeType.Universal)
         {
             var deadLetterExchanges = _exchanges
                 .Select(x => x.Options)
@@ -90,17 +90,18 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services
                 .Distinct(new DeadLetterExchangeEqualityComparer())
                 .ToList();
 
-            await StartChannel(channel, _exchanges, deadLetterExchanges);
+            await StartChannel(channel, _exchanges, deadLetterExchanges, clientExchangeType);
         }
 
-        private static async Task StartChannel(IChannel channel, IEnumerable<RabbitMqExchange> exchanges, IEnumerable<DeadLetterExchange> deadLetterExchanges)
+        private static async Task StartChannel(IChannel channel, IEnumerable<RabbitMqExchange> exchanges,
+            IEnumerable<DeadLetterExchange> deadLetterExchanges, ClientExchangeType clientExchangeType)
         {
             foreach (var exchange in deadLetterExchanges)
             {
                 await StartDeadLetterExchange(channel, exchange);
             }
 
-            foreach (var exchange in exchanges)
+            foreach (var exchange in exchanges.Where(exchange => exchange.ClientExchangeType == clientExchangeType || exchange.ClientExchangeType == ClientExchangeType.Universal))
             {
                 await StartExchange(channel, exchange);
             }
@@ -140,12 +141,19 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services
                 autoDelete: queue.AutoDelete,
                 arguments: queue.Arguments);
 
+            // If the queue name was not provided (server-generated name), write the actual
+            // declared queue name back into the options so later consumers use the correct name.
+            if (string.IsNullOrEmpty(queue.Name))
+            {
+                queue.Name = queueDeclareOk.QueueName;
+            }
+
             if (queue.RoutingKeys.Count > 0)
             {
                 foreach (var route in queue.RoutingKeys)
                 {
                     await channel.QueueBindAsync(
-                        queue: queueDeclareOk.QueueName,
+                        queue: queue.Name,
                         exchange: exchangeName,
                         routingKey: route);
                 }
@@ -154,9 +162,9 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services
             {
                 // If there are not any routing keys then make a bind with a queue name.
                 await channel.QueueBindAsync(
-                    queue: queueDeclareOk.QueueName,
+                    queue: queue.Name,
                     exchange: exchangeName,
-                    routingKey: queueDeclareOk.QueueName);
+                    routingKey: queue.Name);
             }
         }
 
