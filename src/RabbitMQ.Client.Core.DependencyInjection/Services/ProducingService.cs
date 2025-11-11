@@ -10,6 +10,7 @@ using RabbitMQ.Client.Core.DependencyInjection.Exceptions;
 using RabbitMQ.Client.Core.DependencyInjection.InternalExtensions.Validation;
 using RabbitMQ.Client.Core.DependencyInjection.Models;
 using RabbitMQ.Client.Core.DependencyInjection.Services.Interfaces;
+using RabbitMQ.Client.Events;
 
 namespace RabbitMQ.Client.Core.DependencyInjection.Services
 {
@@ -159,39 +160,214 @@ namespace RabbitMQ.Client.Core.DependencyInjection.Services
             await SendAsync(bytes, properties, deadLetterExchange, delayedQueueName);
         }
 
-        // /// <inheritdoc/>
-        // public async Task SendAsync<T>(T @object, string exchangeName, string routingKey) where T : class =>
-        //     await Task.Run(() => Send(@object, exchangeName, routingKey)).ConfigureAwait(false);
-        //
-        // /// <inheritdoc/>
-        // public async Task SendAsync<T>(T @object, string exchangeName, string routingKey, int millisecondsDelay) where T : class =>
-        //     await Task.Run(() => Send(@object, exchangeName, routingKey, millisecondsDelay)).ConfigureAwait(false);
-        //
-        // /// <inheritdoc/>
-        // public async Task SendJsonAsync(string json, string exchangeName, string routingKey) =>
-        //     await Task.Run(() => SendJson(json, exchangeName, routingKey)).ConfigureAwait(false);
-        //
-        // /// <inheritdoc/>
-        // public async Task SendJsonAsync(string json, string exchangeName, string routingKey, int millisecondsDelay) =>
-        //     await Task.Run(() => SendJson(json, exchangeName, routingKey, millisecondsDelay)).ConfigureAwait(false);
-        //
-        // /// <inheritdoc/>
-        // public async Task SendStringAsync(string message, string exchangeName, string routingKey) =>
-        //     await Task.Run(() => SendString(message, exchangeName, routingKey)).ConfigureAwait(false);
-        //
-        // /// <inheritdoc/>
-        // public async Task SendStringAsync(string message, string exchangeName, string routingKey, int millisecondsDelay) =>
-        //     await Task.Run(() => SendString(message, exchangeName, routingKey, millisecondsDelay)).ConfigureAwait(false);
-        //
-        // /// <inheritdoc/>
-        // public async Task SendAsync(ReadOnlyMemory<byte> bytes, BasicProperties properties, string exchangeName,
-        //     string routingKey) =>
-        //     await Task.Run(() => Send(bytes, properties, exchangeName, routingKey)).ConfigureAwait(false);
-        //
-        // /// <inheritdoc/>
-        // public async Task SendAsync(ReadOnlyMemory<byte> bytes, BasicProperties properties, string exchangeName,
-        //     string routingKey, int millisecondsDelay) =>
-        //     await Task.Run(() => Send(bytes, properties, exchangeName, routingKey, millisecondsDelay)).ConfigureAwait(false);
+        /// <inheritdoc/>
+        public async Task<TResponse?> SendRpcAsync<TResponse>(ReadOnlyMemory<byte> bytes, BasicProperties properties,
+            string exchangeName,
+            string routingKey,
+            TimeSpan timeout,
+            Func<TaskCompletionSource<TResponse?>, object, BasicDeliverEventArgs, Task>? onResponseReceived = null,
+            Action<TaskCompletionSource<TResponse?>>? onTimeout = null)
+        {
+            onResponseReceived ??= async (tcs, obj, ea) =>
+            {
+                tcs.TrySetResult(ea.GetPayload<TResponse?>());
+                await Task.CompletedTask;
+            };
+
+            onTimeout ??= tcs => tcs.TrySetException(new TimeoutException("RPC response timed out"));
+
+            var corrId = Guid.NewGuid().ToString();
+            var q = await Channel!.QueueDeclareAsync(queue: string.Empty, durable: false, exclusive: true,
+                autoDelete: true,
+                arguments: null);
+            var replyQueue = q.QueueName;
+
+            var tcs = new TaskCompletionSource<TResponse?>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            var consumer = new AsyncEventingBasicConsumer(Channel);
+            consumer.ReceivedAsync += async (obj, ea) =>
+            {
+                var props = ea.BasicProperties;
+                if (props == null)
+                    return;
+
+                if (props.CorrelationId != corrId)
+                {
+                    // not our ack
+                    return;
+                }
+
+                await onResponseReceived(tcs, obj, ea);
+
+                await Task.CompletedTask;
+            };
+
+            var consumerTag = await Channel.BasicConsumeAsync(queue: replyQueue, autoAck: true, consumer: consumer);
+
+            var propsToSend = new BasicProperties(properties)
+            {
+                ReplyTo = replyQueue,
+                CorrelationId = corrId,
+            };
+
+            await SendAsync(bytes, propsToSend, exchangeName, routingKey);
+
+            // now wait for either an ack or a timeout;
+            using var cts = new CancellationTokenSource(timeout);
+            await using (cts.Token.Register(() => onTimeout(tcs)))
+            {
+                var response = await tcs.Task;
+                await Channel.BasicCancelAsync(consumerTag);
+                await Channel.QueueDeleteAsync(replyQueue);
+                return response;
+            }
+        }
+
+        /// <inheritdoc/>
+        public async Task<TResponse?> SendRpcAsync<TRequest, TResponse>(TRequest request, string exchangeName,
+            string routingKey,
+            TimeSpan timeout,
+            Func<TaskCompletionSource<TResponse?>, object, BasicDeliverEventArgs, Task>? onResponseReceived = null,
+            Action<TaskCompletionSource<TResponse?>>? onTimeout = null)
+        {
+            var json = JsonSerializer.Serialize(request);
+            var bytes = Encoding.UTF8.GetBytes(json);
+            var properties = CreateJsonProperties();
+            return await SendRpcAsync(bytes, properties, exchangeName, routingKey, timeout,
+                onResponseReceived, onTimeout);
+        }
+
+        /// <inheritdoc/>
+        public async Task<TResponse?> SendRpcAsync<TRequest, TResponse>(TRequest request, string exchangeName,
+            string routingKey,
+            int millisecondsDelay,
+            TimeSpan timeout,
+            Func<TaskCompletionSource<TResponse?>, object, BasicDeliverEventArgs, Task>? onResponseReceived = null,
+            Action<TaskCompletionSource<TResponse?>>? onTimeout = null)
+        {
+            var json = JsonSerializer.Serialize(request);
+            var bytes = Encoding.UTF8.GetBytes(json);
+            var properties = CreateJsonProperties();
+            EnsureProducingChannelIsNotNull();
+            ValidateArguments(exchangeName, routingKey);
+            var deadLetterExchange = GetDeadLetterExchange(exchangeName);
+            var delayedQueueName =
+                await DeclareDelayedQueue(exchangeName, deadLetterExchange, routingKey, millisecondsDelay);
+            return await SendRpcAsync(bytes, properties, deadLetterExchange, delayedQueueName, timeout,
+                onResponseReceived, onTimeout);
+        }
+
+        /// <inheritdoc/>
+        public async Task<TResponse?> SendRpcAsync<TResponse>(string json, string exchangeName,
+            string routingKey,
+            TimeSpan timeout,
+            Func<TaskCompletionSource<TResponse?>, object, BasicDeliverEventArgs, Task>? onResponseReceived = null,
+            Action<TaskCompletionSource<TResponse?>>? onTimeout = null)
+        {
+            var bytes = Encoding.UTF8.GetBytes(json);
+            var properties = CreateJsonProperties();
+            return await SendRpcAsync(bytes, properties, exchangeName, routingKey, timeout,
+                onResponseReceived, onTimeout);
+        }
+
+        /// <inheritdoc/>
+        public async Task<bool> SendRpcResponseAsync<T>(
+            T response,
+            string? replyTo,
+            string? correlationId) where T : class
+        {
+            if (string.IsNullOrEmpty(replyTo) || string.IsNullOrEmpty(correlationId))
+                return false;
+
+            try
+            {
+                var json = JsonSerializer.Serialize(response);
+                var bytes = Encoding.UTF8.GetBytes(json);
+                var properties = new BasicProperties
+                {
+                    CorrelationId = correlationId,
+                    ContentType = "application/json"
+                };
+
+                await Channel!.BasicPublishAsync(
+                    exchange: string.Empty,
+                    routingKey: replyTo,
+                    body: bytes,
+                    basicProperties: properties,
+                    mandatory: false);
+
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+
+        /// <inheritdoc/>
+        public async Task<bool> SendRpcResponseAsync(
+            ReadOnlyMemory<byte> bytes,
+            string? replyTo,
+            string? correlationId,
+            BasicProperties? properties = null)
+        {
+            if (string.IsNullOrEmpty(replyTo) || string.IsNullOrEmpty(correlationId))
+                return false;
+
+            try
+            {
+                properties ??= new BasicProperties();
+                properties.CorrelationId = correlationId;
+
+                await Channel!.BasicPublishAsync(
+                    exchange: string.Empty,
+                    routingKey: replyTo,
+                    body: bytes,
+                    basicProperties: properties,
+                    mandatory: false);
+
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+
+        /// <inheritdoc/>
+        public async Task<bool> SendRpcResponseJsonAsync(
+            string json,
+            string? replyTo,
+            string? correlationId)
+        {
+            if (string.IsNullOrEmpty(replyTo) || string.IsNullOrEmpty(correlationId))
+                return false;
+
+            try
+            {
+                var bytes = Encoding.UTF8.GetBytes(json);
+                var properties = new BasicProperties
+                {
+                    CorrelationId = correlationId,
+                    ContentType = "application/json"
+                };
+
+                await Channel!.BasicPublishAsync(
+                    exchange: string.Empty,
+                    routingKey: replyTo,
+                    body: bytes,
+                    basicProperties: properties,
+                    mandatory: false);
+
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
 
         private static BasicProperties CreateProperties()
         {
